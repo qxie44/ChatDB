@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <title>ChatDB</title>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        #chat-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100vh;
+        }
+        #results {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            background: white;
+        }
+        #prompt-area {
+            border-top: 1px solid #dee2e6;
+            padding: 10px;
+            background: white;
+        }
+        .chat-entry {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="chat-container">
+        <div id="results"></div>
+        <div id="prompt-area" class="input-group">
+            <select id="database-type" class="form-select">
+                <option value="SQL">SQL</option>
+                <option value="NoSQL">MongoDB</option>
+            </select>
+            <select id="dataset-name" class="form-select">
+                <option value="">Select Dataset</option>
+            </select>
+            <input type="text" id="query-input" class="form-control" placeholder="Enter your query here...">
+            <button id="upload-btn" class="btn btn-secondary">Upload Dataset</button>
+            <button id="send-btn" class="btn btn-primary">Send</button>
+            <input type="file" id="file-input" hidden>
+        </div>
+    </div>
+    
+    
+    <div class="modal fade" id="howToUseModal" tabindex="-1" aria-labelledby="howToUseLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="howToUseLabel">How to Use ChatDB</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Welcome to ChatDB! Here's a quick guide to get you started:</p>
+                    <ul>
+                        <li><strong>Upload Dataset:</strong> Use the "Upload Dataset" button to upload a CSV, JSON, or XLSX file.</li>
+                        <li><strong>Select Dataset:</strong> Choose the dataset you want to query from the dropdown menu and select whether you want SQL or MongoDB queries.</li>
+                        <li><strong>Enter Query:</strong> Type your query in the input box. You can start with asking for 'example queries' or write you own:
+                            <ul>
+                                <li><code>show total sales group by category</code></li>
+                            </ul>
+                        </li>
+                        <li><strong>Preview Dataset:</strong> Uploaded datasets will display a preview. Use the specific column names shown.</li>
+                        <li><strong>Send Query:</strong> Click "Send" to execute the query and view the results below. All queries will have limit 100 by default unless specified to avoid system overload </li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got It!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Automatically show the modal on page load
+            const howToUseModal = new bootstrap.Modal(document.getElementById('howToUseModal'), {
+                keyboard: false, // Prevent modal from closing with the keyboard
+                backdrop: 'static' // Prevent modal from closing when clicking outside
+            });
+            howToUseModal.show(); // Show the modal
+            console.log("Modal shown successfully.");
+        });
+    </script>
+    <script>
+        const resultsDiv = document.getElementById('results');
+        const sendBtn = document.getElementById('send-btn');
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileInput = document.getElementById('file-input');
+        const queryInput = document.getElementById('query-input');
+        const datasetDropdown = document.getElementById('dataset-name');
+
+        // Function to add a dataset to the dropdown
+        const addDatasetToDropdown = (datasetName) => {
+            const option = document.createElement('option');
+            option.value = datasetName;
+            option.textContent = datasetName;
+            datasetDropdown.appendChild(option);
+        };
+
+        // Function to format results as a table or JSON
+       // Function to format results as a table or JSON
+       const formatResults = (data) => {
+            console.log('formatResults called with data:', data); // Lo
+
+            // Handle missing or invalid data gracefully
+            if (!data) {
+                console.error('Error: No data received.'); // Log
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'text-danger';
+                errorMessage.textContent = 'Error: No data to display.';
+                return errorMessage;
+            }
+
+            // Check if the data contains headers and results
+            if (data.headers && Array.isArray(data.results)) {
+                console.log('Valid headers and results detected.'); // Log
+
+                const table = document.createElement('table');
+                table.className = 'table table-striped';
+                const thead = document.createElement('thead');
+                const tbody = document.createElement('tbody');
+
+                // Add table headers
+                const headerRow = document.createElement('tr');
+                data.headers.forEach((header) => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+
+                // Add table rows
+                data.results.forEach((row) => {
+                    const rowElement = document.createElement('tr');
+
+                    if (Array.isArray(row)) {
+                        // Handle SQL-style array rows
+                        row.forEach((value) => {
+                            const td = document.createElement('td');
+                            td.textContent = value !== null ? value : ''; // Handle null values
+                            rowElement.appendChild(td);
+                        });
+                    } else if (typeof row === 'object') {
+                        // Handle MongoDB-style object rows
+                        Object.values(row).forEach((value) => {
+                            const td = document.createElement('td');
+                            td.textContent = value !== null ? value : ''; // Handle null values
+                            rowElement.appendChild(td);
+                        });
+                    }
+
+                    tbody.appendChild(rowElement);
+                });
+
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                console.log('Table formatted successfully.'); // Log
+                return table;
+            }
+
+            // Fallback for preview or array of objects
+            if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+                console.log('Handling array of objects as fallback.'); // Log
+
+                const table = document.createElement('table');
+                table.className = 'table table-striped';
+                const thead = document.createElement('thead');
+                const tbody = document.createElement('tbody');
+
+                // Add table headers from object keys
+                const headers = Object.keys(data[0]);
+                const headerRow = document.createElement('tr');
+                headers.forEach((header) => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+
+                // Add table rows from object values
+                data.forEach((row) => {
+                    const rowElement = document.createElement('tr');
+                    Object.values(row).forEach((value) => {
+                        const td = document.createElement('td');
+                        td.textContent = value !== null ? value : ''; // Handle null values
+                        rowElement.appendChild(td);
+                    });
+                    tbody.appendChild(rowElement);
+                });
+
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                console.log('Fallback table formatted successfully.'); // Log
+                return table;
+            }
+
+            // Fallback for non-tabular data
+            console.log('Fallback for non-tabular data.'); // Log
+            const pre = document.createElement('pre');
+            pre.textContent = JSON.stringify(data, null, 2);
+            return pre;
+        };
+
+// Handle sending queries
+sendBtn.addEventListener('click', async () => {
+    const query = queryInput.value.trim();
+    const databaseType = document.getElementById('database-type').value;
+    let datasetName = datasetDropdown.value; // Use let instead of const to modify
+
+    if (!datasetName) {
+        const errorEntry = document.createElement('div');
+        errorEntry.className = 'chat-entry text-danger';
+        errorEntry.textContent = `Error: Please select a dataset from the dropdown before sending a query.`;
+        resultsDiv.appendChild(errorEntry);
+        return; 
+    }
+
+    if (query.toLowerCase() === "example queries") {
+        try {
+            // Fetch example options
+            const response = await fetch('/run_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: "example queries",
+                    database_type: databaseType,
+                    table: datasetName
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            // Display example options
+            const exampleEntry = document.createElement('div');
+            exampleEntry.className = 'chat-entry';
+            exampleEntry.innerHTML = `
+                <strong>Example Options:</strong><br> 
+                1: ${result.example_queries[1]}<br>
+                2: ${result.example_queries[2]}<br>
+                3: ${result.example_queries[3]}<br>
+                <em>Type "1", "2", or "3" to generate a random query from the selected option.</em>`;
+            resultsDiv.appendChild(exampleEntry);
+            queryInput.value = ''; // Clear the input field for the user
+        } catch (error) {
+            const errorEntry = document.createElement('div');
+            errorEntry.className = 'chat-entry text-danger';
+            errorEntry.textContent = `Error: ${error.message}`;
+            resultsDiv.appendChild(errorEntry);
+        }
+        return; // Stop further execution for "example queries"
+    }
+
+    if (["1", "2", "3"].includes(query)) {
+        try {
+            // Fetch a random query for the selected example type
+            const response = await fetch('/run_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: `example option ${query}`,
+                    database_type: databaseType,
+                    table: datasetName
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            // Display the generated example query
+            const exampleResultEntry = document.createElement('div');
+            exampleResultEntry.className = 'chat-entry';
+            exampleResultEntry.innerHTML = `<strong>Generated Example Query:</strong> ${result.generated_example}`;
+            resultsDiv.appendChild(exampleResultEntry);
+
+            // Display the results table
+            const resultsEntry = document.createElement('div');
+            resultsEntry.className = 'chat-entry';
+            //const formattedResults = formatResults(result.results);
+            const formattedResults = formatResults(result);
+            resultsEntry.appendChild(formattedResults);
+            resultsDiv.appendChild(resultsEntry);
+
+            queryInput.value = ''; // Clear the input field for the user
+        } catch (error) {
+            const errorEntry = document.createElement('div');
+            errorEntry.className = 'chat-entry text-danger';
+            errorEntry.textContent = `Error: ${error.message}`;
+            resultsDiv.appendChild(errorEntry);
+        }
+        return; // Stop further execution for example query selection
+    }
+
+    if (query) {
+        try {
+            const response = await fetch('/run_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query,
+                    database_type: databaseType,
+                    table: datasetName
+                    // table: datasetName.replace(/ /g, '_') // Normalize table name
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Error: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            // Display the user's query
+            const userQueryEntry = document.createElement('div');
+            userQueryEntry.className = 'chat-entry';
+            userQueryEntry.innerHTML = `<strong>You:</strong> ${query}`;
+            resultsDiv.appendChild(userQueryEntry);
+
+            // Display the generated query
+            const queryEntry = document.createElement('div');
+            queryEntry.className = 'chat-entry';
+            //queryEntry.innerHTML = `<strong>Generated Query:</strong> <code>${result.query}</code>`;
+            queryEntry.innerHTML = `<strong>Generated Example Query:</strong><pre>${result.query}</pre>`;
+            resultsDiv.appendChild(queryEntry);
+
+            // Display the results table
+            const resultsEntry = document.createElement('div');
+            resultsEntry.className = 'chat-entry';
+            //const formattedResults = formatResults(result.results || result);
+            const formattedResults = formatResults(result);
+            resultsEntry.appendChild(formattedResults);
+            resultsDiv.appendChild(resultsEntry);
+
+            queryInput.value = '';
+        } catch (error) {
+            const errorEntry = document.createElement('div');
+            errorEntry.className = 'chat-entry text-danger';
+            errorEntry.textContent = `Error: ${error.message}`;
+            resultsDiv.appendChild(errorEntry);
+        }
+    }
+});
+        // Handle file upload
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Error: ${response.statusText}`);
+                    }
+
+                    const result = await response.json();
+
+                    // Show feedback in the UI
+                    const entry = document.createElement('div');
+                    entry.className = 'chat-entry';
+                    if (result.success) {
+                        entry.innerHTML = `<strong>File Uploaded:</strong> ${file.name}<br><strong>Response:</strong> ${result.success}`;
+                        
+                        // Add dataset to dropdown
+                        const datasetName = file.name.split('.')[0];
+                        addDatasetToDropdown(datasetName);
+
+                        // Display preview
+                        if (result.preview && Array.isArray(result.preview)) {
+                            const previewTable = formatResults(result.preview);
+                            const previewEntry = document.createElement('div');
+                            previewEntry.innerHTML = `<strong>Preview:</strong>`;
+                            previewEntry.appendChild(previewTable);
+                            resultsDiv.appendChild(previewEntry);
+                        }
+
+                    } else if (result.error) {
+                        entry.className += ' text-danger';
+                        entry.textContent = `Error: ${result.error}`;
+                    }
+                    resultsDiv.appendChild(entry);
+                } catch (error) {
+                    const errorEntry = document.createElement('div');
+                    errorEntry.className = 'chat-entry text-danger';
+                    errorEntry.textContent = `Error: ${error.message}`;
+                    resultsDiv.appendChild(errorEntry);
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
