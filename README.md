@@ -1,4 +1,4 @@
-# dsci551
+# Dsci551 ChatDB
 
 This is the code submission for the final project for DSCI 551
 Before opening Flask, ensure the mySQL and MongoDB client is edited to your own connection.
